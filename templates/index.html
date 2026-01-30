@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Campus Smart Parking - Live</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #ffffff; color: #c9d1d9; font-family: 'Segoe UI', sans-serif; }
+        .card { background-color: #ffffff; border: 1px solid #30363d; border-radius: 12px; margin-bottom: 20px; }
+        .video-box { border: 3px solid #30363d; border-radius: 10px; overflow: hidden; }
+        .status-granted { background-color: #238636; color: white; padding: 15px; border-radius: 8px; text-align: center; }
+        .status-denied { background-color: #da3633; color: white; padding: 15px; border-radius: 8px; text-align: center; }
+    </style>
+</head>
+<body>
+
+<div class="container py-5">
+    <h1 class="text-center mb-5 text-primary">CAMPUS SMART PARKING - LIVE FEED</h1>
+
+    <div class="row">
+        <div class="col-md-7">
+            <div class="card p-4 shadow">
+                <h3>Live Surveillance</h3>
+                <div class="video-box mb-3">
+                    <img id="webcam" src="{{ url_for('video_feed') }}" width="100%">
+                </div>
+                <div id="scanResult" class="d-none">
+                    <div id="statusBox" class="mb-3 fw-bold"></div>
+                    <div class="p-3 bg-dark rounded border border-secondary">
+                        <p><strong>Plate:</strong> <span id="resPlate" class="text-info"></span></p>
+                        <p><strong>Owner:</strong> <span id="resOwner"></span></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-5">
+            <div class="card p-4 shadow">
+                <h3>Register Vehicle</h3>
+                <input type="text" id="regPlate" class="form-control mb-2 bg-dark text-white border-secondary" placeholder="Plate (e.g. SPKY9196)">
+                <input type="text" id="regName" class="form-control mb-2 bg-dark text-white border-secondary" placeholder="Owner Name">
+                <select id="regRole" class="form-select mb-3 bg-dark text-white border-secondary">
+                    <option value="Staff">Staff</option>
+                    <option value="Student">Student</option>
+                </select>
+                <button onclick="registerVehicle()" class="btn btn-success w-100 py-2">REGISTER</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="card p-4 mt-4 shadow">
+        <h3>Registered Vehicles</h3>
+        <table class="table table-dark table-hover">
+            <thead>
+                <tr><th>Plate</th><th>Owner</th><th>Role</th><th>Action</th></tr>
+            </thead>
+            <tbody id="userTable"></tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    window.onload = loadUsers;
+
+    // Automatic Scanning every 3 seconds
+    setInterval(async () => {
+        const video = document.getElementById('webcam');
+        const canvas = document.createElement('canvas');
+        canvas.width = 640; 
+        canvas.height = 480;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        
+        canvas.toBlob(async (blob) => {
+            const formData = new FormData();
+            formData.append('image', blob, 'capture.jpg');
+            const res = await fetch('/scan', { method: 'POST', body: formData });
+            const data = await res.json();
+            if(data.plate !== "Unknown") updateUI(data);
+        }, 'image/jpeg');
+    }, 3000);
+
+    function updateUI(data) {
+        const resultDiv = document.getElementById('scanResult');
+        const statusBox = document.getElementById('statusBox');
+        resultDiv.classList.remove('d-none');
+        document.getElementById('resPlate').innerText = data.plate;
+        document.getElementById('resOwner').innerText = data.name || "N/A";
+
+        if(data.status === "ALLOWED") {
+            statusBox.innerText = "ACCESS GRANTED";
+            statusBox.className = "status-granted";
+        } else {
+            statusBox.innerText = "ACCESS DENIED";
+            statusBox.className = "status-denied";
+        }
+    }
+
+    async function loadUsers() {
+        const res = await fetch('/users');
+        const users = await res.json();
+        const table = document.getElementById('userTable');
+        table.innerHTML = '';
+        users.forEach(u => {
+            table.innerHTML += `<tr><td class="text-info">${u.plate_number}</td><td>${u.name}</td><td>${u.role}</td><td><button onclick="deleteUser('${u.plate_number}')" class="btn btn-outline-danger btn-sm">Delete</button></td></tr>`;
+        });
+    }
+
+    async function registerVehicle() {
+        const plate = document.getElementById('regPlate').value;
+        const name = document.getElementById('regName').value;
+        const role = document.getElementById('regRole').value;
+        await fetch('/register', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ plate, name, role })
+        });
+        loadUsers();
+    }
+
+    async function deleteUser(plate) {
+        if(confirm(`Delete ${plate}?`)) {
+            await fetch(`/delete/${plate}`, { method: 'DELETE' });
+            loadUsers();
+        }
+    }
+</script>
+</body>
+</html>
